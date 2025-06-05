@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flask Chess Game</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .chess-board {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            grid-template-rows: repeat(8, 1fr);
+            width: 640px;
+            height: 640px;
+            border: 4px solid #8B4513;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.3);
+        }
+        
+        .chess-square {
+            width: 80px;
+            height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+        }
+        
+        .chess-square.light {
+            background-color: #F0D9B5;
+        }
+        
+        .chess-square.dark {
+            background-color: #B58863;
+        }
+        
+        .chess-square.selected {
+            background-color: #F7DC6F !important;
+            box-shadow: inset 0 0 0 3px #F39C12;
+        }
+        
+        .chess-square.valid-move {
+            background-color: #A3D977 !important;
+        }
+        
+        .chess-square:hover {
+            opacity: 0.8;
+        }
+        
+        .chess-piece {
+            font-size: 48px;
+            cursor: pointer;
+            user-select: none;
+            transition: transform 0.1s;
+        }
+        
+        .chess-piece:hover {
+            transform: scale(1.1);
+        }
+        
+        .status-panel {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <div class="text-center mb-8">
+            <h1 class="text-5xl font-bold text-white mb-4 bg-gradient-to-r from-yellow-400 via-red-500 to-pink-500 bg-clip-text text-transparent">
+                ♛ Flask Chess Game ♛
+            </h1>
+            <p class="text-gray-300 text-lg">Rich UI Chess Game with Flask Backend</p>
+        </div>
+        
+        <div class="flex flex-col lg:flex-row gap-8 items-center justify-center">
+            <!-- Game Board -->
+            <div class="flex flex-col items-center">
+                <div class="mb-4 text-white text-center">
+                    <div class="status-panel px-6 py-3 rounded-lg shadow-lg">
+                        <div class="text-sm text-gray-200">Current Player:</div>
+                        <div id="current-player" class="text-2xl font-bold capitalize"></div>
+                    </div>
+                </div>
+                
+                <div id="chess-board" class="chess-board rounded-lg"></div>
+                
+                <div class="mt-4 flex gap-4">
+                    <button id="reset-btn" class="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white px-6 py-3 rounded-lg font-semibold shadow-lg transition-all transform hover:scale-105">
+                        🔄 Reset Game
+                    </button>
+                    <button id="undo-btn" class="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white px-6 py-3 rounded-lg font-semibold shadow-lg transition-all transform hover:scale-105">
+                        ↶ Undo Move
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Game Info Panel -->
+            <div class="bg-white/10 backdrop-blur-lg rounded-xl p-6 w-full lg:w-80 text-white shadow-xl">
+                <h3 class="text-xl font-bold mb-4 text-center">Game Information</h3>
+                
+                <div class="space-y-4">
+                    <div class="bg-white/5 rounded-lg p-4">
+                        <div class="text-sm text-gray-300">Game Status:</div>
+                        <div id="game-status" class="text-lg font-semibold text-green-400">Active</div>
+                    </div>
+                    
+                    <div class="bg-white/5 rounded-lg p-4">
+                        <div class="text-sm text-gray-300">Last Move:</div>
+                        <div id="last-move" class="text-sm">No moves yet</div>
+                    </div>
+                    
+                    <div class="bg-white/5 rounded-lg p-4">
+                        <div class="text-sm text-gray-300 mb-2">Legend:</div>
+                        <div class="grid grid-cols-2 gap-2 text-xs">
+                            <div>♔ King</div>
+                            <div>♛ Queen</div>
+                            <div>♜ Rook</div>
+                            <div>♝ Bishop</div>
+                            <div>♞ Knight</div>
+                            <div>♟ Pawn</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const pieceSymbols = {
+            'white': {
+                'king': '♔',
+                'queen': '♕',
+                'rook': '♖',
+                'bishop': '♗',
+                'knight': '♘',
+                'pawn': '♙'
+            },
+            'black': {
+                'king': '♚',
+                'queen': '♛',
+                'rook': '♜',
+                'bishop': '♝',
+                'knight': '♞',
+                'pawn': '♟'
+            }
+        };
+
+        let selectedSquare = null;
+        let gameState = null;
+
+        function createBoard() {
+            const board = document.getElementById('chess-board');
+            board.innerHTML = '';
+            
+            for (let row = 0; row < 8; row++) {
+                for (let col = 0; col < 8; col++) {
+                    const square = document.createElement('div');
+                    square.className = `chess-square ${(row + col) % 2 === 0 ? 'light' : 'dark'}`;
+                    square.dataset.row = row;
+                    square.dataset.col = col;
+                    square.addEventListener('click', handleSquareClick);
+                    board.appendChild(square);
+                }
+            }
+        }
+
+        function updateBoard(boardState) {
+            const squares = document.querySelectorAll('.chess-square');
+            
+            squares.forEach(square => {
+                const row = parseInt(square.dataset.row);
+                const col = parseInt(square.dataset.col);
+                const piece = boardState.board[row][col];
+                
+                square.innerHTML = '';
+                square.classList.remove('selected', 'valid-move');
+                
+                if (piece) {
+                    const pieceElement = document.createElement('div');
+                    pieceElement.className = 'chess-piece';
+                    pieceElement.textContent = pieceSymbols[piece.color][piece.piece];
+                    square.appendChild(pieceElement);
+                }
+            });
+            
+            document.getElementById('current-player').textContent = boardState.current_player;
+            document.getElementById('game-status').textContent = boardState.game_over ? `Game Over - ${boardState.winner} wins!` : 'Active';
+        }
+
+        function handleSquareClick(event) {
+            const row = parseInt(event.currentTarget.dataset.row);
+            const col = parseInt(event.currentTarget.dataset.col);
+            
+            if (selectedSquare) {
+                if (selectedSquare.row === row && selectedSquare.col === col) {
+                    // Deselect
+                    document.querySelector(`[data-row="${selectedSquare.row}"][data-col="${selectedSquare.col}"]`).classList.remove('selected');
+                    selectedSquare = null;
+                } else {
+                    // Make move
+                    makeMove(selectedSquare.row, selectedSquare.col, row, col);
+                }
+            } else {
+                // Select piece
+                const piece = gameState.board[row][col];
+                if (piece && piece.color === gameState.current_player) {
+                    selectedSquare = { row, col };
+                    event.currentTarget.classList.add('selected');
+                }
+            }
+        }
+
+        async function makeMove(fromRow, fromCol, toRow, toCol) {
+            try {
+                const response = await fetch('/api/move', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        from_row: fromRow,
+                        from_col: fromCol,
+                        to_row: toRow,
+                        to_col: toCol
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    gameState = result.board_state;
+                    updateBoard(gameState);
+                    document.getElementById('last-move').textContent = `${String.fromCharCode(97 + fromCol)}${8 - fromRow} → ${String.fromCharCode(97 + toCol)}${8 - toRow}`;
+                } else {
+                    alert('Invalid move!');
+                }
+                
+                selectedSquare = null;
+                document.querySelectorAll('.chess-square').forEach(sq => sq.classList.remove('selected'));
+                
+            } catch (error) {
+                console.error('Error making move:', error);
+            }
+        }
+
+        async function resetGame() {
+            try {
+                const response = await fetch('/api/reset', {
+                    method: 'POST'
+                });
+                
+                gameState = await response.json();
+                updateBoard(gameState);
+                selectedSquare = null;
+                document.getElementById('last-move').textContent = 'No moves yet';
+                
+            } catch (error) {
+                console.error('Error resetting game:', error);
+            }
+        }
+
+        async function loadGameState() {
+            try {
+                const response = await fetch('/api/board');
+                gameState = await response.json();
+                updateBoard(gameState);
+            } catch (error) {
+                console.error('Error loading game state:', error);
+            }
+        }
+
+        // Event listeners
+        document.getElementById('reset-btn').addEventListener('click', resetGame);
+        document.getElementById('undo-btn').addEventListener('click', () => {
+            alert('Undo feature coming soon!');
+        });
+
+        // Initialize game
+        createBoard();
+        loadGameState();
+    </script>
+</body>
+</html>
